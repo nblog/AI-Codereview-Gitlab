@@ -1,3 +1,7 @@
+from dotenv import load_dotenv
+
+load_dotenv("conf/.env")
+
 import atexit
 import json
 import os
@@ -7,7 +11,7 @@ from urllib.parse import urlparse
 
 from apscheduler.schedulers.background import BackgroundScheduler
 from apscheduler.triggers.cron import CronTrigger
-from dotenv import load_dotenv
+
 from flask import Flask, request, jsonify
 
 from biz.gitlab.webhook_handler import slugify_url
@@ -19,10 +23,8 @@ from biz.utils.queue import handle_queue
 from biz.utils.reporter import Reporter
 
 from biz.utils.config_checker import check_config
-load_dotenv("conf/.env")
+
 api_app = Flask(__name__)
-
-
 
 push_review_enabled = os.environ.get('PUSH_REVIEW_ENABLED', '0') == '1'
 
@@ -113,7 +115,7 @@ def handle_webhook():
 
         # 判断是GitLab还是GitHub的webhook
         webhook_source = request.headers.get('X-GitHub-Event')
-        
+
         if webhook_source:  # GitHub webhook
             return handle_github_webhook(webhook_source, data)
         else:  # GitLab webhook
@@ -121,33 +123,37 @@ def handle_webhook():
     else:
         return jsonify({'message': 'Invalid data format'}), 400
 
+
 def handle_github_webhook(event_type, data):
     # 获取GitHub配置
     github_token = os.getenv('GITHUB_ACCESS_TOKEN') or request.headers.get('X-GitHub-Token')
     if not github_token:
         return jsonify({'message': 'Missing GitHub access token'}), 400
-        
+
     github_url = os.getenv('GITHUB_URL') or 'https://github.com'
     github_url_slug = slugify_url(github_url)
-    
+
     # 打印整个payload数据
     logger.info(f'Received GitHub event: {event_type}')
     logger.info(f'Payload: {json.dumps(data)}')
-    
+
     if event_type == "pull_request":
         # 使用handle_queue进行异步处理
         handle_queue(handle_github_pull_request_event, data, github_token, github_url, github_url_slug)
         # 立马返回响应
-        return jsonify({'message': f'GitHub request received(event_type={event_type}), will process asynchronously.'}), 200
+        return jsonify(
+            {'message': f'GitHub request received(event_type={event_type}), will process asynchronously.'}), 200
     elif event_type == "push":
         # 使用handle_queue进行异步处理
         handle_queue(handle_github_push_event, data, github_token, github_url, github_url_slug)
         # 立马返回响应
-        return jsonify({'message': f'GitHub request received(event_type={event_type}), will process asynchronously.'}), 200
+        return jsonify(
+            {'message': f'GitHub request received(event_type={event_type}), will process asynchronously.'}), 200
     else:
         error_message = f'Only pull_request and push events are supported for GitHub webhook, but received: {event_type}.'
         logger.error(error_message)
         return jsonify(error_message), 400
+
 
 def handle_gitlab_webhook(data):
     object_kind = data.get("object_kind")
@@ -197,6 +203,7 @@ def handle_gitlab_webhook(data):
         error_message = f'Only merge_request and push events are supported (both Webhook and System Hook), but received: {object_kind}.'
         logger.error(error_message)
         return jsonify(error_message), 400
+
 
 if __name__ == '__main__':
     check_config()
