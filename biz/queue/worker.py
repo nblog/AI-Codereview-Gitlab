@@ -27,24 +27,27 @@ def handle_push_event(webhook_data: dict, gitlab_token: str, gitlab_url: str, gi
         score = 0
         additions = 0
         deletions = 0
-        if push_review_enabled:
-            # 获取PUSH的changes
-            changes = handler.get_push_changes()
-            logger.info('changes: %s', changes)
-            changes = filter_changes(changes)
-            if not changes:
-                logger.info('未检测到PUSH代码的修改,修改文件可能不满足SUPPORTED_EXTENSIONS。')
-            review_result = "关注的文件没有修改"
 
-            if len(changes) > 0:
-                commits_text = ';'.join(commit.get('message', '').strip() for commit in commits)
+        # 获取PUSH的changes
+        changes = handler.get_push_changes()
+        logger.info('changes: %s', changes)
+        changes = filter_changes(changes)
+        if not changes:
+            logger.info('未检测到PUSH代码的修改,修改文件可能不满足SUPPORTED_EXTENSIONS。')
+        review_result = ""
+
+        if len(changes) > 0:
+            commits_text = ';'.join(commit.get('message', '').strip() for commit in commits)
+
+            if push_review_enabled: # 开启了PUSH_REVIEW_ENABLED
                 review_result = CodeReviewer().review_and_strip_code(str(changes), commits_text)
                 score = CodeReviewer.parse_review_score(review_text=review_result)
-                for item in changes:
-                    additions += item['additions']
-                    deletions += item['deletions']
-            # 将review结果提交到Gitlab的 notes
-            handler.add_push_notes(f'Auto Review Result: \n{review_result}')
+                # 将review结果提交到Gitlab的 notes
+                handler.add_push_notes(f'Auto Review Result: \n{review_result}')
+
+            for item in changes:
+                additions += item['additions']
+                deletions += item['deletions']
 
         event_manager['push_reviewed'].send(PushReviewEntity(
             project_name=webhook_data['project']['name'],

@@ -437,12 +437,12 @@ def main_page():
     start_date_default = current_date - datetime.timedelta(days=7)
 
     # 根据环境变量决定是否显示 push_tab
-    show_push_tab = os.environ.get('PUSH_REVIEW_ENABLED', '0') == '1'
+    # show_push_tab = os.environ.get('PUSH_REVIEW_ENABLED', '0') == '1'
 
-    if show_push_tab:
-        mr_tab, push_tab = st.tabs(["合并请求", "代码推送"])
-    else:
-        mr_tab = st.container()
+    # if show_push_tab:
+    mr_tab, push_tab = st.tabs(["合并请求", "代码推送"])
+    # else:
+    #     mr_tab = st.container()
 
     def display_data(tab, service_func, columns, column_config):
         with tab:
@@ -539,27 +539,27 @@ def main_page():
     display_data(mr_tab, ReviewService().get_mr_review_logs, mr_columns, mr_column_config)
 
     # Push 数据展示
-    if show_push_tab:
-        push_columns = ["project_name", "author", "branch", "updated_at", "commit_messages", "delta", "score",
-                        'additions', 'deletions']
+    # if show_push_tab:
+    push_columns = ["project_name", "author", "branch", "updated_at", "commit_messages", "delta", "score",
+                    'additions', 'deletions']
 
-        push_column_config = {
-            "project_name": "项目名称",
-            "author": "开发者",
-            "branch": "分支",
-            "updated_at": "更新时间",
-            "commit_messages": "提交信息",
-            "score": st.column_config.ProgressColumn(
-                "得分",
-                format="%f",
-                min_value=0,
-                max_value=100,
-            ),
-            "additions": None,
-            "deletions": None,
-        }
+    push_column_config = {
+        "project_name": "项目名称",
+        "author": "开发者",
+        "branch": "分支",
+        "updated_at": "更新时间",
+        "commit_messages": "提交信息",
+        "score": st.column_config.ProgressColumn(
+            "得分",
+            format="%f",
+            min_value=0,
+            max_value=100,
+        ),
+        "additions": None,
+        "deletions": None,
+    }
 
-        display_data(push_tab, ReviewService().get_push_review_logs, push_columns, push_column_config)
+    display_data(push_tab, ReviewService().get_push_review_logs, push_columns, push_column_config)
 
 
 # 应用入口
