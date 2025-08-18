@@ -124,6 +124,10 @@ def handle_webhook():
         return jsonify({'message': 'Invalid data format'}), 400
 
 def handle_subversion_webhook(event_type, data):
+    # 检查事件类型
+    if not "Post-Commit" == event_type:
+        return jsonify({'message': 'Invalid Subversion event type'}), 400
+
     # 获取Subversion配置
     subversion_token = os.getenv('SUBVERSION_ACCESS_TOKEN') or request.headers.get('X-Subversion-Token')
     if not subversion_token:
