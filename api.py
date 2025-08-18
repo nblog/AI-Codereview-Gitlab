@@ -113,16 +113,39 @@ def handle_webhook():
         if not data:
             return jsonify({"error": "Invalid JSON"}), 400
 
-        # 判断是GitLab还是GitHub的webhook
-        webhook_source = request.headers.get('X-GitHub-Event')
-
-        if webhook_source:  # GitHub webhook
-            return handle_github_webhook(webhook_source, data)
+        # 判断是哪个平台
+        if "X-Subversion-Event" in request.headers:  # Subversion webhook
+            return handle_subversion_webhook(request.headers.get('X-Subversion-Event'), data)
+        elif "X-GitHub-Event" in request.headers:  # GitHub webhook
+            return handle_github_webhook(request.headers.get('X-GitHub-Event'), data)
         else:  # GitLab webhook
             return handle_gitlab_webhook(data)
     else:
         return jsonify({'message': 'Invalid data format'}), 400
 
+def handle_subversion_webhook(event_type, data):
+    # 获取Subversion配置
+    subversion_token = os.getenv('SUBVERSION_ACCESS_TOKEN') or request.headers.get('X-Subversion-Token')
+    if not subversion_token:
+        return jsonify({'message': 'Missing Subversion access token'}), 400
+
+    subversion_url = os.getenv('SUBVERSION_URL') or 'http://172.17.188.253/svn/'
+    subversion_url_slug = slugify_url(subversion_url)
+
+    # 打印整个payload数据
+    logger.info(f'Received Subversion event: {event_type}')
+    logger.info(f'Payload: {json.dumps(data)}')
+
+    if event_type == "commit":
+        # 处理commit事件
+        pass
+    elif event_type == "merge":
+        # 处理merge事件
+        pass
+    else:
+        error_message = f'Unsupported Subversion event type: {event_type}.'
+        logger.error(error_message)
+        return jsonify(error_message), 400
 
 def handle_github_webhook(event_type, data):
     # 获取GitHub配置
