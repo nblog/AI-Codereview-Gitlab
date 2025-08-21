@@ -568,11 +568,13 @@ class SubversionWebhook:
             logger.error(f"Error getting diff for {file_path}: {e}")
             return None, 0, 0, False
 
-    def get_working_copy_changes(self, format_style: str = "github") -> Optional[SVNWorkingCopyChanges]:
+    def get_working_copy_changes(self, commit_files: Optional[List[str]] = None, 
+                                 format_style: str = "github") -> Optional[SVNWorkingCopyChanges]:
         """
-        获取工作副本的变更信息（相对于COMMITTED版本）
+        获取工作副本的变更信息（相对于BASE版本）
         
         Args:
+            commit_files: 指定要检查的文件列表，如果为None则检查所有变更
             format_style: diff格式风格
             
         Returns:
@@ -585,52 +587,65 @@ class SubversionWebhook:
                 logger.error("Failed to get repository info")
                 return None
             
-            # 获取变更文件列表（使用summarize模式）
-            status_result = self.svn_command(['diff', '--summarize'])
-            if not status_result.success:
-                logger.error(f"Failed to get working copy changes: {status_result.stderr}")
-                return None
-            
             changed_files = []
             
-            # 解析状态输出
-            for line in status_result.stdout.strip().split('\n'):
-                if not line.strip():
-                    continue
+            if commit_files is not None:
+                # 如果指定了文件列表，逐个检查每个文件
+                logger.info(f"Checking specific files: {len(commit_files)} files")
                 
-                # 解析状态行：状态码 + 文件路径
-                parts = line.split()
-                if len(parts) < 2:
-                    continue
+                for file_path in commit_files:
+                    file_change = self._process_single_file_change(
+                        file_path, repo_info, format_style
+                    )
+                    if file_change:
+                        changed_files.append(file_change)
+                        logger.info(f"Processed specific file change: {file_change.display_text}")
+            else:
+                # 如果未指定文件列表，获取所有变更文件列表（使用summarize模式）
+                logger.info("Getting all working copy changes")
+                status_result = self.svn_command(['diff', '--summarize'])
+                if not status_result.success:
+                    logger.error(f"Failed to get working copy changes: {status_result.stderr}")
+                    return None
                 
-                action_str = parts[0]
-                file_path = ' '.join(parts[1:])  # 处理路径中包含空格的情况
-                
-                # 转换为枚举类型
-                try:
-                    action = SVNFileAction(action_str)
-                except ValueError:
-                    logger.warning(f"Unknown SVN action: {action_str}, skipping file {file_path}")
-                    continue
-                
-                # 获取diff信息
-                diff_content, lines_added, lines_deleted, is_binary = self.get_file_diff(
-                    file_path, format_style=format_style
-                )
-                
-                file_change = SVNFileChange(
-                    path=file_path,
-                    action=action,
-                    diff_content=diff_content,
-                    old_revision=repo_info.revision,
-                    new_revision="working copy",
-                    lines_added=lines_added,
-                    lines_deleted=lines_deleted,
-                    is_binary=is_binary
-                )
-                
-                changed_files.append(file_change)
-                logger.info(f"Processed working copy change: {file_change.display_text}")
+                # 解析状态输出
+                for line in status_result.stdout.strip().split('\n'):
+                    if not line.strip():
+                        continue
+                    
+                    # 解析状态行：状态码 + 文件路径
+                    parts = line.split()
+                    if len(parts) < 2:
+                        continue
+                    
+                    action_str = parts[0]
+                    file_path = ' '.join(parts[1:])  # 处理路径中包含空格的情况
+                    
+                    # 转换为枚举类型
+                    try:
+                        action = SVNFileAction(action_str)
+                    except ValueError:
+                        logger.warning(f"Unknown SVN action: {action_str}, skipping file {file_path}")
+                        continue
+                    
+                    # 获取diff信息
+                    diff_content, lines_added, lines_deleted, is_binary = self.get_file_diff(
+                        file_path, format_style=format_style
+                    )
+                    
+                    file_change = SVNFileChange(
+                        path=file_path,
+                        action=action,
+                        diff_content=diff_content,
+                        old_revision=repo_info.revision,
+                        new_revision="working copy",
+                        lines_added=lines_added,
+                        lines_deleted=lines_deleted,
+                        is_binary=is_binary
+                    )
+                    
+                    changed_files.append(file_change)
+                    logger.info(f"Processed working copy change: {file_change.display_text}")
             
             return SVNWorkingCopyChanges(
                 changed_files=changed_files,
@@ -640,6 +655,90 @@ class SubversionWebhook:
             
         except Exception as e:
             logger.error(f"Error getting working copy changes: {e}")
+            return None
+
+    def _process_single_file_change(self, file_path: str, repo_info: SVNRepoInfo, format_style: str) -> Optional[SVNFileChange]:
+        """
+        处理单个文件的变更信息
+        
+        Args:
+            file_path: 文件路径
+            repo_info: 仓库信息
+            format_style: diff格式风格
+            
+        Returns:
+            SVNFileChange对象或None
+        """
+        try:
+            # 对单个文件执行diff --summarize命令
+            status_result = self.svn_command(['diff', '--summarize', file_path])
+            
+            # 检查文件是否在版本控制中
+            if not status_result.success:
+                # 检查是否是文件不在版本控制中的错误
+                if "was not found" in status_result.stderr and "E155010" in status_result.stderr:
+                    logger.info(f"File {file_path} is not under version control, treating as ADDED")
+                    action = SVNFileAction.ADDED
+                    
+                    # 对于新增文件
+                    diff_content, lines_added, lines_deleted, is_binary = self.get_file_diff(
+                        file_path, format_style
+                    )
+                    
+                    return SVNFileChange(
+                        path=file_path,
+                        action=action,
+                        diff_content=diff_content,
+                        old_revision=repo_info.revision,
+                        new_revision="working copy",
+                        lines_added=lines_added,
+                        lines_deleted=lines_deleted,
+                        is_binary=is_binary
+                    )
+                else:
+                    logger.error(f"Failed to get diff for file {file_path}: {status_result.stderr}")
+                    return None
+            
+            # 解析diff --summarize的输出
+            stdout_lines = status_result.stdout.strip().split('\n')
+            if not stdout_lines or not stdout_lines[0].strip():
+                logger.info(f"No changes found for file {file_path}")
+                return None
+            
+            # 解析状态行：状态码 + 文件路径
+            line = stdout_lines[0]
+            parts = line.split()
+            if len(parts) < 2:
+                logger.warning(f"Invalid diff output format for file {file_path}: {line}")
+                return None
+            
+            action_str = parts[0]
+            
+            # 转换为枚举类型
+            try:
+                action = SVNFileAction(action_str)
+            except ValueError:
+                logger.warning(f"Unknown SVN action: {action_str} for file {file_path}")
+                return None
+            
+            # 获取详细的diff信息
+            diff_content, lines_added, lines_deleted, is_binary = self.get_file_diff(
+                file_path, format_style=format_style
+            )
+            
+            return SVNFileChange(
+                path=file_path,
+                action=action,
+                diff_content=diff_content,
+                old_revision=repo_info.revision,
+                new_revision="working copy",
+                lines_added=lines_added,
+                lines_deleted=lines_deleted,
+                is_binary=is_binary
+            )
+            
+        except Exception as e:
+            logger.error(f"Error processing file change for {file_path}: {e}")
             return None
 
     def get_commit_info(self, revision: str, format_style: str = "github") -> Optional[SVNCommitInfo]:
@@ -691,7 +790,7 @@ class SubversionWebhook:
                             logger.warning(f"Unknown SVN action: {action_str}, skipping file {file_path}")
                             continue
                         
-                        # 计算版本号
+                        # 计算版本号 (TODO: HEAD BASE COMMITTED PREV)
                         old_revision = str(int(revision) - 1) if action != SVNFileAction.ADDED else None
                         new_revision = revision if action != SVNFileAction.DELETED else None
                         
