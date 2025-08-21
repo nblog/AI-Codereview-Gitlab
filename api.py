@@ -15,7 +15,7 @@ from flask import Flask, request, jsonify
 
 from biz.gitlab.webhook_handler import slugify_url
 from biz.queue.worker import handle_merge_request_event, handle_push_event, handle_github_pull_request_event, \
-    handle_github_push_event
+    handle_github_push_event, handle_subversion_event
 from biz.service.review_service import ReviewService
 from biz.utils.im import notifier
 from biz.utils.log import logger
@@ -124,32 +124,72 @@ def handle_webhook():
         return jsonify({'message': 'Invalid data format'}), 400
 
 def handle_subversion_webhook(event_type, data):
+    """
+    处理SVN webhook事件
+    
+    Args:
+        event_type: SVN事件类型 (Post-Commit 或 Pre-Commit)
+        data: webhook数据
+        
+    Returns:
+        JSON响应
+    """
     # 检查事件类型
-    if not "Post-Commit" == event_type:
-        return jsonify({'message': 'Invalid Subversion event type'}), 400
+    if event_type not in ["Post-Commit", "Pre-Commit"]:
+        error_message = f'Invalid Subversion event type: {event_type}. Only "Post-Commit" and "Pre-Commit" are supported.'
+        logger.error(error_message)
+        return jsonify({'message': error_message}), 400
 
     # 获取Subversion配置
     subversion_token = os.getenv('SUBVERSION_ACCESS_TOKEN') or request.headers.get('X-Subversion-Token')
     if not subversion_token:
+        logger.error('Missing Subversion access token')
         return jsonify({'message': 'Missing Subversion access token'}), 400
 
-    subversion_url = os.getenv('SUBVERSION_URL') or 'http://172.17.188.253/svn/'
+    # 获取SVN服务器URL（从webhook数据中提取或使用环境变量）
+    subversion_url = os.getenv('SUBVERSION_URL')
+    if not subversion_url and data.get('repository'):
+        subversion_url = data['repository'].get('url', '')
+    
+    if not subversion_url:
+        logger.error('Missing Subversion server URL')
+        return jsonify({'message': 'Missing Subversion server URL'}), 400
+
     subversion_url_slug = slugify_url(subversion_url)
 
     # 打印整个payload数据
     logger.info(f'Received Subversion event: {event_type}')
-    logger.info(f'Payload: {json.dumps(data)}')
+    logger.info(f'Repository: {data.get("repository", {}).get("name", "unknown")}')
+    logger.info(f'Changes count: {len(data.get("changes", []))}')
+    logger.debug(f'Payload: {json.dumps(data, indent=2)}')
 
-    if event_type == "commit":
-        # 处理commit事件
-        pass
-    elif event_type == "merge":
-        # 处理merge事件
-        pass
+    # 验证必要的数据字段
+    if not data.get('repository'):
+        error_message = 'Invalid payload: missing repository information'
+        logger.error(error_message)
+        return jsonify({'message': error_message}), 400
+
+    # 处理commit事件
+    if event_type in ["Post-Commit", "Pre-Commit"]:
+        try:
+            # 使用异步队列处理SVN事件
+            handle_queue(handle_subversion_event, data, subversion_token, subversion_url, subversion_url_slug)
+            
+            # 立即返回响应
+            return jsonify({
+                'message': f'Subversion request received (event_type={event_type}), will process asynchronously.',
+                'repository': data.get('repository', {}).get('name', 'unknown'),
+                'revision': data.get('commits', [{}])[0].get('id', 'unknown') if data.get('commits') else 'unknown'
+            }), 200
+            
+        except Exception as e:
+            error_message = f'Failed to queue Subversion event: {str(e)}'
+            logger.error(error_message)
+            return jsonify({'message': error_message}), 500
     else:
         error_message = f'Unsupported Subversion event type: {event_type}.'
         logger.error(error_message)
-        return jsonify(error_message), 400
+        return jsonify({'message': error_message}), 400
 
 def handle_github_webhook(event_type, data):
     # 获取GitHub配置

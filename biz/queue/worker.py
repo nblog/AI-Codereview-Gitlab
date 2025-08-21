@@ -6,6 +6,7 @@ from biz.entity.review_entity import MergeRequestReviewEntity, PushReviewEntity
 from biz.event.event_manager import event_manager
 from biz.gitlab.webhook_handler import filter_changes, MergeRequestHandler, PushHandler
 from biz.github.webhook_handler import filter_changes as filter_github_changes, PullRequestHandler as GithubPullRequestHandler, PushHandler as GithubPushHandler
+from biz.subversion.webhook_handler import filter_changes as filter_svn_changes, SVNCommitHandler
 from biz.service.review_service import ReviewService
 from biz.utils.code_reviewer import CodeReviewer
 from biz.utils.im import notifier
@@ -301,3 +302,110 @@ def handle_github_pull_request_event(webhook_data: dict, github_token: str, gith
         error_message = f'服务出现未知错误: {str(e)}\n{traceback.format_exc()}'
         notifier.send_notification(content=error_message)
         logger.error('出现未知错误: %s', error_message)
+
+
+def handle_subversion_event(webhook_data: dict, subversion_token: str, subversion_url: str, subversion_url_slug: str):
+    """
+    处理SVN提交事件
+    
+    Args:
+        webhook_data: SVN webhook数据
+        subversion_token: SVN访问令牌
+        subversion_url: SVN服务器URL
+        subversion_url_slug: SVN URL slug用于标识
+    """
+    try:
+        handler = SVNCommitHandler(webhook_data)
+        event_type = handler.event_type
+        
+        logger.info(f'SVN {event_type} event received')
+        
+        # 获取提交信息
+        commit_info = handler.get_commit_info()
+        if not commit_info:
+            logger.error('Failed to get SVN commit info')
+            return
+        
+        # 获取仓库信息
+        repo_info = handler.get_repository_info()
+        repository_name = repo_info.get('name', 'unknown') if repo_info else 'unknown'
+        
+        logger.info(f'Processing SVN commit: repository={repository_name}, '
+                   f'revision={commit_info.get("revision")}, '
+                   f'author={commit_info.get("author")}')
+        
+        # 获取变更信息
+        changes = handler.get_commit_changes()
+        if not changes:
+            logger.info('No changes detected in SVN commit event')
+            return
+        
+        # 过滤变更文件
+        filtered_changes = filter_svn_changes(changes)
+        if not filtered_changes:
+            logger.info('未检测到SVN代码的修改，修改文件可能不满足SUPPORTED_EXTENSIONS。')
+            return
+        
+        logger.info(f'Found {len(filtered_changes)} relevant file changes for code review')
+        
+        # 进行代码评审
+        review_result = "关注的文件没有修改"
+        score = 0
+        additions = 0
+        deletions = 0
+        
+        if len(filtered_changes) > 0:
+            # 准备评审内容
+            commit_message = commit_info.get('message', '').strip()
+            
+            # 调用代码评审器
+            review_result = CodeReviewer().review_and_strip_code(str(filtered_changes), commit_message)
+            score = CodeReviewer.parse_review_score(review_text=review_result)
+            
+            # 统计代码行数变化
+            for item in filtered_changes:
+                additions += item.get('additions', 0)
+                deletions += item.get('deletions', 0)
+            
+            logger.info(f'Code review completed: score={score}, '
+                       f'additions={additions}, deletions={deletions}')
+        
+        # 尝试添加评审结果（目前会抛出NotImplementedError）
+        try:
+            if handler.is_post_commit_event():
+                # Post-Commit事件：提交后评审，添加评审结果
+                handler.add_commit_notes(f'Auto Review Result: \n{review_result}')
+            elif handler.is_pre_commit_event():
+                # Pre-Commit事件：提交前评审，目前只记录日志
+                logger.info(f'Pre-commit review result: {review_result}')
+                # TODO: 根据评审结果决定是否允许提交
+        except NotImplementedError:
+            logger.info('SVN commit notes feature not implemented, review result logged only')
+        
+        # 触发评审完成事件（类似Push事件）
+        event_manager['push_reviewed'].send(PushReviewEntity(
+            project_name=repository_name,
+            project_id=repo_info.get('uuid', 'unknown')[:8] if repo_info else 'unknown',  # 使用UUID前8位作为项目ID
+            branch_name='trunk',  # SVN默认主干
+            commit_sha=commit_info.get('revision', 'unknown'),
+            commit_title=commit_message,
+            commit_messages=commit_message,
+            commits_count=1,  # SVN每次通常只有一个提交
+            author=commit_info.get('author', 'unknown'),
+            assignee='',  # SVN没有assignee概念
+            score=score,
+            url=commit_info.get('url', ''),
+            review_result=review_result,
+            url_slug=subversion_url_slug,
+            webhook_data=webhook_data,
+            additions=additions,
+            deletions=deletions,
+            last_commit_id=commit_info.get('revision', 'unknown'),
+        ))
+        
+        logger.info(f'SVN {event_type} event processed successfully')
+        
+    except Exception as e:
+        error_message = f'SVN服务出现未知错误: {str(e)}\n{traceback.format_exc()}'
+        notifier.send_notification(content=error_message)
+        logger.error('SVN处理出现未知错误: %s', error_message)
