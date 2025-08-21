@@ -862,7 +862,6 @@ class SubversionWebhook:
                 'created_at': commit_info.iso_date,
                 # TODO: 待确认是否需要构造具体的提交URL
                 'url': f"{repo_info.url}?r={commit_info.revision}",
-                'web_url': f"{repo_info.url}?r={commit_info.revision}"
             }
             commits.append(commit)
 
