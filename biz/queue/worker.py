@@ -321,9 +321,9 @@ def handle_subversion_event(webhook_data: dict, subversion_token: str, subversio
         logger.info(f'SVN {event_type} event received')
         
         # 获取提交信息
-        attr_info = handler.get_event_attributes()
-        if not attr_info:
-            logger.error('Failed to get SVN attributes info')
+        commit_info = handler.get_commit_info() or handler.get_event_attributes()
+        if not commit_info:
+            logger.error('Failed to get SVN commit info')
             return
         
         # 获取仓库信息
@@ -331,8 +331,8 @@ def handle_subversion_event(webhook_data: dict, subversion_token: str, subversio
         repository_name = repo_info.get('name', 'unknown') if repo_info else 'unknown'
         
         logger.info(f'Processing SVN commit: repository={repository_name}, '
-                   f'revision={attr_info.get("revision")}, '
-                   f'author={attr_info.get("author")}')
+                   f'revision={commit_info.get("revision")}, '
+                   f'author={commit_info.get("author")}')
         
         # 获取变更信息
         changes = handler.get_commit_changes()
@@ -356,7 +356,7 @@ def handle_subversion_event(webhook_data: dict, subversion_token: str, subversio
         
         if len(filtered_changes) > 0:
             # 准备评审内容
-            commit_message = attr_info.get('message', '').strip()
+            commit_message = commit_info.get('message', '').strip()
             
             # 调用代码评审器
             review_result = CodeReviewer().review_and_strip_code(str(filtered_changes), commit_message)
@@ -385,10 +385,10 @@ def handle_subversion_event(webhook_data: dict, subversion_token: str, subversio
         # 触发评审完成事件（类似Push事件）
         event_manager['push_reviewed'].send(PushReviewEntity(
             project_name=repository_name,
-            author=attr_info.get('author', 'unknown'),
+            author=commit_info.get('author', 'unknown'),
             branch='trunk',  # SVN默认主干
-            updated_at=attr_info.get('timestamp', int(datetime.now().timestamp())),
-            commits=[ handler.get_commit_info() ], # SVN通常只有一个提交
+            updated_at=commit_info.get('timestamp', int(datetime.now().timestamp())),
+            commits=[ commit_info ], # SVN通常只有一个提交
             score=score,
             review_result=review_result,
             url_slug=subversion_url_slug,

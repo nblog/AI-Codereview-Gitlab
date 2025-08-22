@@ -164,11 +164,12 @@ class SVNCommitHandler:
         
         return {
             'revision': object_attributes.get('revision'),
+            'message': object_attributes.get('message', ''),
             'author': object_attributes.get('author', 'unknown'),
+            'timestamp': object_attributes.get('created_at') or object_attributes.get('updated_at'),
+            'url': object_attributes.get('url', ''),
             'action': object_attributes.get('action', ''),
             'state': object_attributes.get('state', 'unknown'),
-            'timestamp': object_attributes.get('created_at') or object_attributes.get('updated_at'),
-            'message': object_attributes.get('message', ''),
             'target_branch': object_attributes.get('target_branch', 'trunk'),
             'source_branch': object_attributes.get('source_branch', 'trunk'),
         }

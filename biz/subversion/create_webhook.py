@@ -978,14 +978,15 @@ class SubversionWebhook:
             # 提交相关信息
             'object_attributes': {
                 'revision': commit_info.revision if commit_info else repo_info.revision,
+                'message': commit_message or '',
                 'author': commit_info.author if commit_info else self._extract_svn_author(),
+                'created_at': commit_info.iso_date if commit_info else datetime.now(timezone.utc).isoformat(),
+                'updated_at': commit_info.iso_date if commit_info else None,
+                'url': f"{repo_info.url}?r={commit_info.revision}" if commit_info else repo_info.url,
                 'action': event_type,
                 'target_branch': 'trunk',
                 'source_branch': 'trunk',
                 'state': 'opened' if event_type == self.PreCommitEvent else 'merged',
-                'created_at': commit_info.iso_date if commit_info else datetime.now(timezone.utc).isoformat(),
-                'updated_at': commit_info.iso_date if commit_info else None,
-                'message': commit_message or '',
             },
             
             # 变更和提交数据
