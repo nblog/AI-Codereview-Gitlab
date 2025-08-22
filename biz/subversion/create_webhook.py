@@ -10,6 +10,7 @@ from datetime import datetime, timezone
 from pathlib import Path
 from typing import Dict, List, Optional, Tuple
 from urllib.parse import urlparse, urljoin
+from mimetypes import guess_type
 import xml.etree.ElementTree as ET
 import asyncio
 import httpx
@@ -517,8 +518,8 @@ class SubversionWebhook:
         
         Args:
             file_path: 文件路径
-            old_revision: 旧版本号，None表示使用COMMITTED
-            new_revision: 新版本号，None表示使用工作副本
+            old_revision: 旧版本号，None表示使用基础版本
+            new_revision: 新版本号，None表示使用变更版本
             format_style: diff格式风格，默认"github"
             
         Returns:
@@ -1027,12 +1028,13 @@ class SubversionWebhook:
         logger.debug(f"Built SVN webhook payload for {event_type}: {len(changes)} changes, {len(commits)} commits")
         return payload
 
-    def create_pre_commit_hook(self, repo_path: str = None) -> bool:
+    def create_pre_commit_hook(self, commit_files: Optional[List[str]] = None, repo_path: str = None) -> bool:
         """
         创建并触发pre-commit webhook
         获取工作副本变更信息并发送预提交审查请求
         
         Args:
+            commit_files: 提交的文件列表（可选）
             repo_path: SVN仓库路径（可选，用于未来扩展）
             
         Returns:
@@ -1042,7 +1044,7 @@ class SubversionWebhook:
             logger.info("Creating pre-commit webhook for working copy changes")
             
             # 获取工作副本变更信息
-            changes_info = self.get_working_copy_changes()
+            changes_info = self.get_working_copy_changes(commit_files=commit_files)
             if not changes_info:
                 logger.warning("No working copy changes found for pre-commit hook")
                 return False
