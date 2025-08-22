@@ -673,32 +673,13 @@ class SubversionWebhook:
         try:
             # 对单个文件执行diff --summarize命令
             status_result = self.svn_command(['diff', '--summarize', file_path])
-            
-            # 检查文件是否在版本控制中
+
+            # 检查文件是否在版本控制中 (理论上是不会进入这个分支的。因为文件应该已经被添加到版本控制中)
             if not status_result.success:
                 # 检查是否是文件不在版本控制中的错误
                 if "was not found" in status_result.stderr and "E155010" in status_result.stderr:
                     logger.info(f"File {file_path} is not under version control, treating as ADDED")
-                    action = SVNFileAction.ADDED
-                    
-                    # 对于新增文件
-                    diff_content, lines_added, lines_deleted, is_binary = self.get_file_diff(
-                        file_path, format_style
-                    )
-                    
-                    return SVNFileChange(
-                        path=file_path,
-                        action=action,
-                        diff_content=diff_content,
-                        old_revision=repo_info.revision,
-                        new_revision="working copy",
-                        lines_added=lines_added,
-                        lines_deleted=lines_deleted,
-                        is_binary=is_binary
-                    )
-                else:
-                    logger.error(f"Failed to get diff for file {file_path}: {status_result.stderr}")
-                    return None
+                return None
             
             # 解析diff --summarize的输出
             stdout_lines = status_result.stdout.strip().split('\n')
@@ -797,7 +778,9 @@ class SubversionWebhook:
                         
                         # 获取diff信息 (远端)
                         diff_content, lines_added, lines_deleted, is_binary = self.get_file_diff(
-                            f"{repo_info.root_url}{file_path}", old_revision, new_revision, format_style
+                            f"{repo_info.root_url}{file_path}", 
+                            old_revision, new_revision, 
+                            format_style=format_style
                         )
                         
                         file_change = SVNFileChange(
