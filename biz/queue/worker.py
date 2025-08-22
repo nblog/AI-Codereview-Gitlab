@@ -321,9 +321,9 @@ def handle_subversion_event(webhook_data: dict, subversion_token: str, subversio
         logger.info(f'SVN {event_type} event received')
         
         # 获取提交信息
-        commit_info = handler.get_commit_info()
-        if not commit_info:
-            logger.error('Failed to get SVN commit info')
+        attr_info = handler.get_event_attributes()
+        if not attr_info:
+            logger.error('Failed to get SVN attributes info')
             return
         
         # 获取仓库信息
@@ -331,8 +331,8 @@ def handle_subversion_event(webhook_data: dict, subversion_token: str, subversio
         repository_name = repo_info.get('name', 'unknown') if repo_info else 'unknown'
         
         logger.info(f'Processing SVN commit: repository={repository_name}, '
-                   f'revision={commit_info.get("revision")}, '
-                   f'author={commit_info.get("author")}')
+                   f'revision={attr_info.get("revision")}, '
+                   f'author={attr_info.get("author")}')
         
         # 获取变更信息
         changes = handler.get_commit_changes()
@@ -356,7 +356,7 @@ def handle_subversion_event(webhook_data: dict, subversion_token: str, subversio
         
         if len(filtered_changes) > 0:
             # 准备评审内容
-            commit_message = commit_info.get('message', '').strip()
+            commit_message = attr_info.get('message', '').strip()
             
             # 调用代码评审器
             review_result = CodeReviewer().review_and_strip_code(str(filtered_changes), commit_message)
@@ -387,20 +387,20 @@ def handle_subversion_event(webhook_data: dict, subversion_token: str, subversio
             project_name=repository_name,
             project_id=repo_info.get('uuid', 'unknown')[:8] if repo_info else 'unknown',  # 使用UUID前8位作为项目ID
             branch_name='trunk',  # SVN默认主干
-            commit_sha=commit_info.get('revision', 'unknown'),
+            commit_sha=attr_info.get('revision', 'unknown'),
             commit_title=commit_message,
             commit_messages=commit_message,
             commits_count=1,  # SVN每次通常只有一个提交
-            author=commit_info.get('author', 'unknown'),
+            author=attr_info.get('author', 'unknown'),
             assignee='',  # SVN没有assignee概念
             score=score,
-            url=commit_info.get('url', ''),
+            url=attr_info.get('url', ''),
             review_result=review_result,
             url_slug=subversion_url_slug,
             webhook_data=webhook_data,
             additions=additions,
             deletions=deletions,
-            last_commit_id=commit_info.get('revision', 'unknown'),
+            last_commit_id=attr_info.get('revision', 'unknown'),
         ))
         
         logger.info(f'SVN {event_type} event processed successfully')

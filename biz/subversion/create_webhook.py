@@ -895,6 +895,7 @@ class SubversionWebhook:
                                    event_type: str,
                                    changes_data: Optional[List[SVNFileChange]] = None,
                                    commit_info: Optional[SVNCommitInfo] = None,
+                                   commit_message: Optional[str] = None,
                                    repo_info: Optional[SVNRepoInfo] = None) -> Dict:
         """
         构造SVN webhook payload
@@ -984,6 +985,7 @@ class SubversionWebhook:
                 'state': 'opened' if event_type == self.PreCommitEvent else 'merged',
                 'created_at': commit_info.iso_date if commit_info else datetime.now(timezone.utc).isoformat(),
                 'updated_at': commit_info.iso_date if commit_info else None,
+                'message': commit_message or '',
             },
             
             # 变更和提交数据
@@ -1011,13 +1013,17 @@ class SubversionWebhook:
         logger.debug(f"Built SVN webhook payload for {event_type}: {len(changes)} changes, {len(commits)} commits")
         return payload
 
-    def create_pre_commit_hook(self, commit_files: Optional[List[str]] = None, repo_path: str = None) -> bool:
+    def create_pre_commit_hook(self, 
+                               commit_files: Optional[List[str]] = None, 
+                               commit_message: Optional[str] = None,
+                               repo_path: str = None) -> bool:
         """
         创建并触发pre-commit webhook
         获取工作副本变更信息并发送预提交审查请求
         
         Args:
             commit_files: 提交的文件列表（可选）
+            commit_message: 提交信息（可选）
             repo_path: SVN仓库路径（可选，用于未来扩展）
             
         Returns:
@@ -1047,6 +1053,7 @@ class SubversionWebhook:
                 event_type=self.PreCommitEvent,
                 changes_data=changes_info.changed_files,
                 commit_info=None,  # pre-commit时没有commit信息
+                commit_message=commit_message,
                 repo_info=repo_info
             )
             

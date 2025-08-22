@@ -133,7 +133,7 @@ class SVNCommitHandler:
     
     def get_commit_info(self) -> Optional[Dict]:
         """
-        获取SVN提交信息
+        获取SVN提交信息（从commits数组获取，仅在Post-Commit事件中可用）
         
         Returns:
             提交信息字典或None
@@ -148,6 +148,29 @@ class SVNCommitHandler:
             'author': self.commit_info.get('author', 'unknown'),
             'timestamp': self.commit_info.get('timestamp'),
             'url': self.commit_info.get('url', ''),
+        }
+    
+    def get_event_attributes(self) -> Optional[Dict]:
+        """
+        获取SVN事件属性信息（从object_attributes获取，适用于Pre-Commit和Post-Commit事件）
+        
+        Returns:
+            事件属性信息字典或None
+        """
+        object_attributes = self.webhook_data.get('object_attributes')
+        if not object_attributes:
+            logger.warn("No object_attributes found in SVN webhook data")
+            return None
+        
+        return {
+            'revision': object_attributes.get('revision'),
+            'author': object_attributes.get('author', 'unknown'),
+            'action': object_attributes.get('action', ''),
+            'state': object_attributes.get('state', 'unknown'),
+            'timestamp': object_attributes.get('created_at') or object_attributes.get('updated_at'),
+            'message': object_attributes.get('message', ''),
+            'target_branch': object_attributes.get('target_branch', 'trunk'),
+            'source_branch': object_attributes.get('source_branch', 'trunk'),
         }
     
     def get_repository_info(self) -> Optional[Dict]:
