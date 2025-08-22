@@ -385,22 +385,16 @@ def handle_subversion_event(webhook_data: dict, subversion_token: str, subversio
         # 触发评审完成事件（类似Push事件）
         event_manager['push_reviewed'].send(PushReviewEntity(
             project_name=repository_name,
-            project_id=repo_info.get('uuid', 'unknown')[:8] if repo_info else 'unknown',  # 使用UUID前8位作为项目ID
-            branch_name='trunk',  # SVN默认主干
-            commit_sha=attr_info.get('revision', 'unknown'),
-            commit_title=commit_message,
-            commit_messages=commit_message,
-            commits_count=1,  # SVN每次通常只有一个提交
             author=attr_info.get('author', 'unknown'),
-            assignee='',  # SVN没有assignee概念
+            branch='trunk',  # SVN默认主干
+            updated_at=attr_info.get('timestamp', int(datetime.now().timestamp())),
+            commits=[ handler.get_commit_info() ], # SVN通常只有一个提交
             score=score,
-            url=attr_info.get('url', ''),
             review_result=review_result,
             url_slug=subversion_url_slug,
             webhook_data=webhook_data,
             additions=additions,
             deletions=deletions,
-            last_commit_id=attr_info.get('revision', 'unknown'),
         ))
         
         logger.info(f'SVN {event_type} event processed successfully')
