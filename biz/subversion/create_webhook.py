@@ -421,7 +421,7 @@ class SubversionWebhook:
             webhook_endpoint: Webhook接收端点URL
         """
         self.webhook_endpoint = webhook_endpoint or os.getenv(
-            'WEBHOOK_ENDPOINT', 'http://localhost:5001/review/webhook')
+            'REVIEW_WEBHOOK_ENDPOINT', 'http://localhost:5001/review/webhook')
         self.repo_uri = repo_uri
         self.abspath, self.username, self.password = Path(repo_uri), '', ''
 
