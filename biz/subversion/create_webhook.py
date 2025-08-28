@@ -412,18 +412,18 @@ class SubversionWebhook:
     PostCommitEvent = "Post-Commit"
     PreCommitEvent = "Pre-Commit"
     
-    def __init__(self, svn_uri: Optional[str] = None, webhook_endpoint: Optional[str] = None):
+    def __init__(self, repo_uri: Optional[str] = None, webhook_endpoint: Optional[str] = None):
         """
         初始化SVN Webhook管理器
         
         Args:
+            repo_uri: SVN仓库URI
             webhook_endpoint: Webhook接收端点URL
-            svn_uri: SVN仓库URI
         """
         self.webhook_endpoint = webhook_endpoint or os.getenv(
             'WEBHOOK_ENDPOINT', 'http://localhost:5001/review/webhook')
-        self.svn_uri = svn_uri
-        self.abspath, self.username, self.password = Path(svn_uri), '', ''
+        self.repo_uri = repo_uri
+        self.abspath, self.username, self.password = Path(repo_uri), '', ''
 
     def _build_svn_command(self, command: List[str], auth_required: bool = True) -> List[str]:
         """
@@ -489,11 +489,11 @@ class SubversionWebhook:
 
             # 解析XML输出
             root = ET.fromstring(result.stdout)
+            revision = root.find('entry').attrib['revision']
             uuid = root.find('entry/repository/uuid').text
             url = root.find('entry/url').text
             relative = root.find('entry/relative-url').text
             root_url = root.find('entry/repository/root').text
-            revision = root.find('entry/commit').attrib['revision']
             self.abspath = Path(root.find('entry/wc-info/wcroot-abspath').text)
 
             return SVNRepoInfo(
