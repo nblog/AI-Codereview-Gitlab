@@ -412,7 +412,7 @@ class SubversionWebhook:
     PostCommitEvent = "Post-Commit"
     PreCommitEvent = "Pre-Commit"
     
-    def __init__(self, svn_uri: str = None, webhook_endpoint: str = None):
+    def __init__(self, svn_uri: Optional[str] = None, webhook_endpoint: Optional[str] = None):
         """
         初始化SVN Webhook管理器
         
@@ -982,7 +982,7 @@ class SubversionWebhook:
                 'author': commit_info.author if commit_info else self._extract_svn_author(),
                 'created_at': commit_info.iso_date if commit_info else datetime.now(timezone.utc).isoformat(),
                 'updated_at': commit_info.iso_date if commit_info else None,
-                'url': f"{repo_info.url}?r={commit_info.revision}" if commit_info else repo_info.url,
+                'url': f"{repo_info.url}?r={commit_info.revision}" if commit_info else f"{repo_info.url}?r={repo_info.revision}",
                 'action': event_type,
                 'target_branch': 'trunk',
                 'source_branch': 'trunk',
