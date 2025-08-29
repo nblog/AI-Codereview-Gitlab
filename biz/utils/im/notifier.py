@@ -1,10 +1,11 @@
+from biz.utils.im.dingtalk2 import DingTalkNotifier as DingTalkNotifier2
 from biz.utils.im.dingtalk import DingTalkNotifier
 from biz.utils.im.feishu import FeishuNotifier
 from biz.utils.im.webhook import ExtraWebhookNotifier
 from biz.utils.im.wecom import WeComNotifier
 
 
-def send_notification(content, msg_type='text', title="通知", is_at_all=False, project_name=None, url_slug=None,
+def send_notification(content, msg_type='text', title="通知", is_at_all=False, author=None, project_name=None, url_slug=None,
                       webhook_data: dict={}):
     """
     发送通知消息到配置的平台(钉钉和企业微信)
@@ -15,6 +16,11 @@ def send_notification(content, msg_type='text', title="通知", is_at_all=False,
     :param url_slug: 由gitlab服务器的url地址(如:http://www.gitlab.com)转换成的slug格式，如: www_gitlab_com
     :param webhook_data: push event、merge event的数据内容
     """
+    # 钉钉推送（内部机器人DING）
+    dingtalk_notifier2 = DingTalkNotifier2()
+    dingtalk_notifier2.send_message(content=content, msg_type=msg_type, title=title, is_at_all=is_at_all,
+                                    project_name=project_name, url_slug=url_slug, author=author)
+
     # 钉钉推送
     dingtalk_notifier = DingTalkNotifier()
     dingtalk_notifier.send_message(content=content, msg_type=msg_type, title=title, is_at_all=is_at_all,
