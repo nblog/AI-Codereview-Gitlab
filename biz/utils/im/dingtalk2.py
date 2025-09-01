@@ -125,7 +125,9 @@ class DingTalkNotifier:
                 "content": content
             }
             
-            response = requests.post(url=self.send_ding_url, json=data, headers=headers, timeout=10)
+            # 手动序列化JSON以确保emoji等特殊字符正确编码
+            json_data = json.dumps(data, ensure_ascii=False)
+            response = requests.post(self.send_ding_url, data=json_data, headers=headers, timeout=30)
             response.raise_for_status()
             
             result = response.json()
@@ -156,23 +158,23 @@ class DingTalkNotifier:
         """
         if not self.enabled:
             logger.info("钉钉机器人推送未启用")
-            return
+            return False
 
         if not all([self.app_key, self.app_secret, self.robot_code]):
             logger.error("钉钉机器人配置不完整，请检查 DINGTALK_APP_KEY、DINGTALK_APP_SECRET、DINGTALK_ROBOT_CODE 环境变量")
-            return
+            return False
 
         # 如果提供了author，搜索对应的用户ID
         if author:
             user_id = self._search_user_id(author)
             if not user_id:
                 logger.warning(f"未找到用户 '{author}'，不发送DING消息")
-                return
+                return False
             
             receiver_user_ids = [user_id]
         else:
             logger.warning("未提供author参数，无法确定消息接收者，不发送DING消息")
-            return
+            return False
 
         # 发送DING消息
         success = self._send_ding_message(content, receiver_user_ids)
@@ -180,3 +182,5 @@ class DingTalkNotifier:
             logger.info(f"钉钉DING消息发送成功，接收者: {receiver_user_ids}")
         else:
             logger.error(f"钉钉DING消息发送失败，接收者: {receiver_user_ids}")
+        
+        return success
