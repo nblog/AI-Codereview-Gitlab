@@ -125,7 +125,7 @@ class DingTalkNotifier:
                 "content": content
             }
             
-            # 手动序列化JSON以确保emoji等特殊字符正确编码
+            # 确保特殊字符正确编码
             json_data = json.dumps(data, ensure_ascii=False)
             response = requests.post(self.send_ding_url, data=json_data, headers=headers, timeout=30)
             response.raise_for_status()
