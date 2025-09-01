@@ -58,7 +58,7 @@ code_review_prompt:
     - Provide specific risk assessments
     - Suggest concrete testing scenarios
     - Be direct about potential problems
-    - **Length Constraint**: Keep total response around 1000 characters - be concise, precise, and impactful
+    - **Length Constraint**: Keep total response around 800 characters - be concise, precise, and impactful
     - Prioritize critical issues over minor style points
     - Use bullet points and clear structure for readability
 

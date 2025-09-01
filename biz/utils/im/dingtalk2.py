@@ -23,6 +23,7 @@ class DingTalkNotifier:
         self.token_url = "https://api.dingtalk.com/v1.0/oauth2/accessToken"
         self.search_user_url = "https://api.dingtalk.com/v1.0/contact/users/search"
         self.send_ding_url = "https://api.dingtalk.com/v1.0/robot/ding/send"
+        self.batch_send_url = "https://api.dingtalk.com/v1.0/robot/oToMessages/batchSend"
 
     def _get_access_token(self) -> Optional[str]:
         """
@@ -101,6 +102,56 @@ class DingTalkNotifier:
             logger.error(f"搜索用户 '{author}' 异常: {e}")
             return None
 
+    def _send_batch_private_message(self, content: str, title: str, receiver_user_ids: list) -> bool:
+        """
+        批量发送一对一私聊消息（新接口，替代DING消息）
+        :param content: 消息内容
+        :param title: 消息标题
+        :param receiver_user_ids: 接收者用户ID列表
+        :return: 发送是否成功
+        """
+        access_token = self._get_access_token()
+        if not access_token:
+            logger.error("无法获取access_token，跳过消息发送")
+            return False
+
+        try:
+            headers = {
+                "Content-Type": "application/json",
+                "x-acs-dingtalk-access-token": access_token
+            }
+            
+            # 构造消息参数
+            msg_param = {
+                "title": title,
+                "text": content
+            }
+            
+            data = {
+                "robotCode": self.robot_code,
+                "userIds": receiver_user_ids,
+                "msgKey": "sampleMarkdown",
+                "msgParam": json.dumps(msg_param, ensure_ascii=False)
+            }
+            
+            # 确保特殊字符正确编码
+            json_data = json.dumps(data, ensure_ascii=False)
+            response = requests.post(self.batch_send_url, data=json_data, headers=headers, timeout=30)
+            response.raise_for_status()
+            
+            result = response.json()
+            # 根据API文档，成功时返回的字段可能有所不同
+            if result.get('success', True):  # 默认认为成功，除非明确返回失败
+                logger.info(f"钉钉批量私聊消息发送成功! 接收者数量: {len(receiver_user_ids)}")
+                return True
+            else:
+                logger.error(f"钉钉批量私聊消息发送失败，响应: {result}")
+                return False
+                
+        except Exception as e:
+            logger.error(f"钉钉批量私聊消息发送异常: {e}")
+            return False
+
     def _send_ding_message(self, content: str, receiver_user_ids: list) -> bool:
         """
         发送DING消息
@@ -176,11 +227,11 @@ class DingTalkNotifier:
             logger.warning("未提供author参数，无法确定消息接收者，不发送DING消息")
             return False
 
-        # 发送DING消息
-        success = self._send_ding_message(content, receiver_user_ids)
+        # 发送批量私聊消息
+        success = self._send_batch_private_message(content, title, receiver_user_ids)
         if success:
-            logger.info(f"钉钉DING消息发送成功，接收者: {receiver_user_ids}")
+            logger.info(f"钉钉批量私聊消息发送成功，接收者: {receiver_user_ids}")
         else:
-            logger.error(f"钉钉DING消息发送失败，接收者: {receiver_user_ids}")
+            logger.error(f"钉钉批量私聊消息发送失败，接收者: {receiver_user_ids}")
         
         return success
