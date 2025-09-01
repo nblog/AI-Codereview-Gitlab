@@ -580,9 +580,7 @@ class SubversionWebhook:
             elif old_revision:
                 # 指定版本与工作副本的diff
                 diff_cmd.extend(['-r', old_revision])
-            else:
-                # 工作副本的diff
-                pass
+            else: pass
             
             # 添加文件路径
             diff_cmd.append(file_path)
