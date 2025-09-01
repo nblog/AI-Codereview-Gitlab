@@ -466,12 +466,57 @@ class SubversionWebhook:
         """
         svn_bin = os.path.expandvars(os.path.join("$ProgramData", "CodeCheck", "config", "VisualSVN", "bin", "svn.exe"))
         full_command = self._build_svn_command(command, auth_required=auth_required)
-        result = subprocess.run(full_command, capture_output=True, text=True, executable=svn_bin, cwd=self.abspath)
+        
+        try:
+            # 首先尝试UTF-8解码
+            result = subprocess.run(full_command, capture_output=True, text=True, encoding='utf-8', executable=svn_bin, cwd=self.abspath)
+        except UnicodeDecodeError:
+            try:
+                # 如果UTF-8失败，尝试系统默认编码
+                result = subprocess.run(full_command, capture_output=True, text=True, encoding='gbk', executable=svn_bin, cwd=self.abspath)
+            except UnicodeDecodeError:
+                # 如果仍然失败，使用二进制模式并处理编码
+                result = subprocess.run(full_command, capture_output=True, executable=svn_bin, cwd=self.abspath)
+                stdout = self._safe_decode(result.stdout) if result.stdout else ""
+                stderr = self._safe_decode(result.stderr) if result.stderr else ""
+                return Result(
+                    returncode=result.returncode,
+                    stdout=stdout,
+                    stderr=stderr
+                )
+        
         return Result(
             returncode=result.returncode,
-            stdout=result.stdout,
-            stderr=result.stderr
+            stdout=result.stdout or "",
+            stderr=result.stderr or ""
         )
+    
+    def _safe_decode(self, data: bytes) -> str:
+        """
+        安全地解码字节数据，尝试多种编码
+        
+        Args:
+            data: 要解码的字节数据
+            
+        Returns:
+            解码后的字符串
+        """
+        if not data:
+            return ""
+            
+        encodings = ['utf-8', 'gb2312', 'latin1']
+        
+        for encoding in encodings:
+            try:
+                return data.decode(encoding)
+            except UnicodeDecodeError:
+                continue
+        
+        # 如果所有编码都失败，使用错误处理模式
+        try:
+            return data.decode('utf-8', errors='replace')
+        except Exception:
+            return str(data)
 
     def get_repo_info(self) -> Optional[SVNRepoInfo]:
         """
@@ -535,7 +580,9 @@ class SubversionWebhook:
             elif old_revision:
                 # 指定版本与工作副本的diff
                 diff_cmd.extend(['-r', old_revision])
-            else: pass
+            else:
+                # 工作副本的diff
+                pass
             
             # 添加文件路径
             diff_cmd.append(file_path)
