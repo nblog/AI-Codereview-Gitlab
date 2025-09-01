@@ -1347,7 +1347,3 @@ class SubversionWebhook:
                 results[hook_type] = False
         
         return results
-
-if __name__ == "__main__":
-    subhook = SubversionWebhook(repo_uri=r"T:\source\repos2\_EPM_main\SetupUE\SetupUE")
-    subhook.create_pre_commit_hook([r"T:\source\repos2\_EPM_main\SetupUE\SetupUE\GlobalLog.cpp"], "")
