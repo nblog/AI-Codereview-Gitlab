@@ -4,6 +4,7 @@
 import os
 import re
 import json
+import locale
 import subprocess
 from enum import Enum
 from datetime import datetime, timezone
@@ -467,29 +468,99 @@ class SubversionWebhook:
         svn_bin = os.path.expandvars(os.path.join("$ProgramData", "CodeCheck", "config", "VisualSVN", "bin", "svn.exe"))
         full_command = self._build_svn_command(command, auth_required=auth_required)
         
-        try:
-            # 首先尝试UTF-8解码
-            result = subprocess.run(full_command, capture_output=True, text=True, encoding='utf-8', executable=svn_bin, cwd=self.abspath)
-        except UnicodeDecodeError:
+        # 获取系统默认编码
+        system_encoding = locale.getpreferredencoding(False)
+        
+        # 编码尝试顺序：UTF-8 -> 系统默认编码
+        encodings_to_try = ['utf-8']
+        if system_encoding.lower() != 'utf-8':
+            encodings_to_try.append(system_encoding)
+        
+        # 使用Popen方法，提供更好的编码控制
+        for encoding in encodings_to_try:
             try:
-                # 如果UTF-8失败，尝试系统默认编码
-                result = subprocess.run(full_command, capture_output=True, text=True, encoding='gbk', executable=svn_bin, cwd=self.abspath)
-            except UnicodeDecodeError:
-                # 如果仍然失败，使用二进制模式并处理编码
-                result = subprocess.run(full_command, capture_output=True, executable=svn_bin, cwd=self.abspath)
-                stdout = self._safe_decode(result.stdout) if result.stdout else ""
-                stderr = self._safe_decode(result.stderr) if result.stderr else ""
+                logger.debug(f"Trying SVN command with encoding: {encoding}")
+                
+                # 使用Popen + communicate，这是处理编码问题的最佳方案
+                process = subprocess.Popen(
+                    full_command,
+                    stdout=subprocess.PIPE,
+                    stderr=subprocess.PIPE,
+                    text=True,
+                    encoding=encoding,
+                    errors='replace',  # 关键：使用replace模式处理编码错误
+                    executable=svn_bin,
+                    cwd=self.abspath
+                )
+                
+                stdout, stderr = process.communicate(timeout=30)  # 30秒超时
+                
+                logger.debug(f"SVN command executed successfully with encoding: {encoding}")
                 return Result(
-                    returncode=result.returncode,
-                    stdout=stdout,
-                    stderr=stderr
+                    returncode=process.returncode,
+                    stdout=stdout or "",
+                    stderr=stderr or ""
+                )
+                
+            except subprocess.TimeoutExpired:
+                logger.error("SVN command timed out")
+                process.kill()
+                process.communicate()  # 清理进程
+                return Result(
+                    returncode=-1,
+                    stdout="",
+                    stderr="Command timeout"
+                )
+            except UnicodeDecodeError as e:
+                logger.debug(f"Encoding {encoding} failed: {e}")
+                continue
+            except Exception as e:
+                logger.error(f"Failed to execute SVN command with encoding {encoding}: {e}")
+                return Result(
+                    returncode=-1,
+                    stdout="",
+                    stderr=str(e)
                 )
         
-        return Result(
-            returncode=result.returncode,
-            stdout=result.stdout or "",
-            stderr=result.stderr or ""
-        )
+        # 所有编码都失败，使用二进制模式作为最后的后备方案
+        try:
+            logger.debug("All text encodings failed, using binary mode with safe decoding")
+            
+            process = subprocess.Popen(
+                full_command,
+                stdout=subprocess.PIPE,
+                stderr=subprocess.PIPE,
+                executable=svn_bin,
+                cwd=self.abspath
+            )
+            
+            stdout_bytes, stderr_bytes = process.communicate(timeout=30)
+            
+            stdout = self._safe_decode(stdout_bytes) if stdout_bytes else ""
+            stderr = self._safe_decode(stderr_bytes) if stderr_bytes else ""
+            
+            return Result(
+                returncode=process.returncode,
+                stdout=stdout,
+                stderr=stderr
+            )
+            
+        except subprocess.TimeoutExpired:
+            logger.error("SVN command (binary mode) timed out")
+            process.kill()
+            process.communicate()
+            return Result(
+                returncode=-1,
+                stdout="",
+                stderr="Command timeout in binary mode"
+            )
+        except Exception as e:
+            logger.error(f"Failed to execute SVN command in binary mode: {e}")
+            return Result(
+                returncode=-1,
+                stdout="",
+                stderr=str(e)
+            )
     
     def _safe_decode(self, data: bytes) -> str:
         """
@@ -503,19 +574,37 @@ class SubversionWebhook:
         """
         if not data:
             return ""
-            
-        encodings = ['utf-8', 'gb2312', 'latin1']
+        
+        # 获取系统默认编码
+        system_encoding = locale.getpreferredencoding(False)
+        
+        # 编码尝试顺序：UTF-8 -> 系统默认编码 -> 常见编码 -> 错误处理模式
+        encodings = ['utf-8']
+        if system_encoding.lower() != 'utf-8':
+            encodings.append(system_encoding)
+        
+        # 添加一些常见的编码作为后备
+        if os.name == 'nt':
+            encodings.extend(['cp936', 'gbk', 'gb2312', 'cp1252'])
+        # Linux/Mac常见编码
+        else:
+            encodings.extend(['iso-8859-1', 'latin1'])
         
         for encoding in encodings:
             try:
-                return data.decode(encoding)
-            except UnicodeDecodeError:
+                result = data.decode(encoding)
+                logger.debug(f"Successfully decoded with encoding: {encoding}")
+                return result
+            except (UnicodeDecodeError, LookupError):
                 continue
         
         # 如果所有编码都失败，使用错误处理模式
         try:
-            return data.decode('utf-8', errors='replace')
+            result = data.decode('utf-8', errors='replace')
+            logger.warning("Used UTF-8 with error replacement for decoding")
+            return result
         except Exception:
+            logger.warning("All decoding attempts failed, using string representation")
             return str(data)
 
     def get_repo_info(self) -> Optional[SVNRepoInfo]:
@@ -1258,3 +1347,7 @@ class SubversionWebhook:
                 results[hook_type] = False
         
         return results
+
+if __name__ == "__main__":
+    subhook = SubversionWebhook(repo_uri=r"T:\source\repos2\_EPM_main\SetupUE\SetupUE")
+    subhook.create_pre_commit_hook([r"T:\source\repos2\_EPM_main\SetupUE\SetupUE\GlobalLog.cpp"], "")
