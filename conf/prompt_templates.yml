@@ -26,8 +26,7 @@ code_review_prompt:
     - Follow the output template in the user message
 
   user_prompt: |-
-    **PR Description**: {pr_description}
-    **Language/Stack**: {language}
+    Conduct a comprehensive code review of the following changes. Focus on identifying potential defects, security issues, and critical testing areas.
 
     **Diffs:**
     {diffs_text}
